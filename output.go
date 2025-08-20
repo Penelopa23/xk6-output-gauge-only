@@ -28,6 +28,10 @@ type Output struct {
 	pod           string
 	interval      string
 	batchSize     int64
+	// Cleanup mechanism
+	lastCleanup     time.Time
+	cleanupInterval time.Duration
+	maxSeriesAge    time.Duration
 }
 
 // New creates a new penelopa output instance
@@ -66,18 +70,21 @@ func New(params output.Params) (output.Output, error) {
 	}
 
 	o := &Output{
-		now:           time.Now,
-		logger:        params.Logger,
-		client:        client,
-		ctx:           ctx,
-		cancel:        cancel,
-		flushInterval: flushInterval,
-		renameMap:     renaming,
-		seriesMap:     map[string]*promwrite.TimeSeries{},
-		tsdb:          make(map[metrics.TimeSeries]*seriesWithMeasure),
-		testid:        testid,
-		pod:           pod,
-		batchSize:     batchSize,
+		now:             time.Now,
+		logger:          params.Logger,
+		client:          client,
+		ctx:             ctx,
+		cancel:          cancel,
+		flushInterval:   flushInterval,
+		renameMap:       renaming,
+		seriesMap:       map[string]*promwrite.TimeSeries{},
+		tsdb:            make(map[metrics.TimeSeries]*seriesWithMeasure),
+		testid:          testid,
+		pod:             pod,
+		batchSize:       batchSize,
+		lastCleanup:     time.Now(),
+		cleanupInterval: 1 * time.Minute, // Cleanup every minute
+		maxSeriesAge:    10 * time.Minute, // Remove series older than 10 minutes
 		metricsBuffer: sync.Pool{
 			New: func() interface{} {
 				return make([]promwrite.TimeSeries, 0, 1000)
