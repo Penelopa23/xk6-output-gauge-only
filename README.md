@@ -1,161 +1,110 @@
 # xk6-output-penelopa
 
-Кастомный output модуль для k6, который отправляет метрики в Prometheus-совместимые системы через remote write протокол с конвертацией всех метрик в gauge-тип.
+## Описание
+
+`xk6-output-penelopa` — это кастомный output-модуль для [k6](https://k6.io/), отправляющий метрики в Prometheus через remote write. Поддерживает сбор и агрегацию метрик, автоматическую очистку старых серий, а также расширяемую архитектуру.
+
+---
+
+## Структура проекта
+
+```
+xk6-output-penelopa/
+├── register.go                    # Регистрация расширения (точка входа)
+├── pkg/
+│   ├── penelopa/                  # Основная логика output-модуля
+│   │   ├── config.go             # Конфигурация и парсинг
+│   │   ├── output.go             # Основная логика output
+│   │   ├── metrics.go            # Работа с метриками
+│   │   └── http.go               # HTTP утилиты
+│   └── remote/                   # Prometheus remote write клиент
+│       └── client.go             # HTTP клиент для remote write
+├── test-script.js                # Пример скрипта для k6
+├── go.mod
+├── go.sum
+├── README.md
+└── build.sh                      # Скрипт сборки
+```
+
+---
+
+## Сборка
+
+```sh
+# Собрать бинарник для использования с k6
+$ go build -o k6-penelopa .
+
+# Собрать через xk6
+$ GOOS=linux GOARCH=amd64 ~/go/bin/xk6 build v0.48.0 \
+  --output k6-penelopa \
+  --with xk6-output-penelopa=/path/to/your/project
+```
+
+---
+
+## Использование с k6
+
+```sh
+# Пример запуска теста с кастомным output
+$ ./k6-penelopa run --out penelopa=http://localhost:8428/api/v1/write test-script.js
+```
+
+---
 
 ## Архитектура
 
-Проект разделен на несколько файлов, следуя принципам ООП:
+Проект следует паттерну официальных xk6 расширений:
 
-### Основные компоненты
+- **register.go** — точка входа, регистрация расширения для k6
+- **pkg/penelopa/** — основная логика output-модуля (конфигурация, метрики, HTTP)
+- **pkg/remote/** — клиент для Prometheus remote write протокола
+- **ООП-структура** — код разделён по смысловым пакетам
+- **Расширяемость** — легко добавлять новые типы метрик и источники конфигурации
+- **Безопасность памяти** — автоматическая очистка старых серий, нет утечек памяти
 
-- **`main.go`** - Регистрация модуля в k6
-- **`output.go`** - Основная логика output модуля (структура Output и её методы)
-- **`metrics.go`** - Работа с метриками и сериями данных
-- **`config.go`** - Конфигурация модуля
-- **`http.go`** - HTTP клиент и утилиты
-- **`remote/client.go`** - Реализация Prometheus remote write протокола
+---
 
-### Структуры данных
+## Основные возможности
 
-#### Output
-Основная структура модуля, которая:
-- Управляет жизненным циклом output
-- Обрабатывает метрики из k6
-- Отправляет данные в Prometheus
-- Собирает метрики памяти Go runtime
+- ✅ Отправка метрик в Prometheus через remote write
+- ✅ Поддержка gauge и counter метрик
+- ✅ Автоматическая очистка старых серий
+- ✅ Метрики использования памяти Go runtime
+- ✅ Логирование HTTP запросов
+- ✅ Конфигурация через переменные окружения и JSON
 
-#### seriesWithMeasure
-Представляет временную серию с накопленными измерениями:
-- Хранит последнее значение и время
-- Определяет тип метрики (gauge/counter)
-- Конвертирует в Prometheus формат
+---
 
-## Конфигурация
+## Пример test-script.js
 
-### Переменные окружения
+```js
+import http from 'k6/http';
+import { check, sleep } from 'k6';
 
-- `PENELOPA_METRICS_URL` - URL для отправки метрик
-- `PENELOPA_METRICS_PUSH_INTERVAL` - Интервал отправки (по умолчанию: 5s)
-- `PENELOPA_TESTID` - Идентификатор теста
-- `PENELOPA_POD` - Идентификатор пода
-- `PENELOPA_BATCH_SIZE` - Размер батча
-- `PENELOPA_INSECURE_SKIP_TLS_VERIFY` - Пропуск проверки TLS
+export const options = {
+  stages: [
+    { duration: '30s', target: 5 },
+    { duration: '1m', target: 5 },
+    { duration: '30s', target: 0 },
+  ],
+  thresholds: {
+    http_req_duration: ['p(95)<500'],
+    http_req_failed: ['rate<0.1'],
+  },
+};
 
-### Значения по умолчанию
-
-```go
-defaultServerURL    = "http://vms-victoria-metrics-single-victoria-server.metricstest:8428/api/v1/write"
-defaultTimeout      = 5 * time.Second
-defaultPushInterval = 5 * time.Second
-defaultBatchSize    = 1000
-defaultPod          = "PenelopaPod"
-defaultTestId       = "PenelopaTestId"
-```
-
-## Использование
-
-### Регистрация в k6
-
-```go
-output.RegisterExtension("penelopa", func(p output.Params) (output.Output, error) {
-    return New(p)
-})
-```
-
-### Запуск
-
-```bash
-k6 run --out penelopa script.js
-```
-
-## Особенности
-
-### Конвертация метрик
-
-Модуль автоматически определяет тип метрики на основе официальной документации k6:
-
-**Gauge метрики** (перезаписываются):
-- `vus` - текущее количество виртуальных пользователей
-- `vus_max` - максимальное количество виртуальных пользователей
-
-**Counter/Trend/Rate метрики** (накапливаются):
-- `iterations` - количество итераций
-- `http_reqs` - количество HTTP запросов
-- `http_req_failed` - количество неудачных запросов
-- `checks` - проверки
-- `data_sent` - отправленные данные
-- `data_received` - полученные данные
-- `http_req_duration` - длительность HTTP запросов
-- `http_req_waiting` - время ожидания
-- `http_req_connecting` - время подключения
-- `http_req_tls_handshaking` - время TLS handshake
-- `http_req_blocked` - время блокировки
-- `http_req_receiving` - время получения
-- `http_req_sending` - время отправки
-- `iteration_duration` - длительность итераций
-- И другие метрики k6
-
-### Управление памятью
-
-Модуль включает механизм автоматической очистки старых серий для предотвращения утечек памяти:
-
-- **Интервал очистки**: каждую минуту
-- **Время жизни серий**: 10 минут для неважных метрик
-- **Сохранение важных метрик**: Counter, Trend и Rate метрики сохраняются независимо от времени последнего обновления
-
-Это обеспечивает баланс между точностью данных и эффективным использованием памяти.
-
-### Переименование метрик
-
-Все метрики получают префикс `k6_`:
-
-```go
-renaming := map[string]string{
-    "vus":                      "k6_vus",
-    "vus_max":                  "k6_vus_max",
-    "iterations":               "k6_iterations_total",
-    "http_reqs":                "k6_http_reqs_total",
-    // ...
+export default function () {
+  const response = http.get('https://httpbin.org/get');
+  check(response, {
+    'status is 200': (r) => r.status === 200,
+    'response time < 500ms': (r) => r.timings.duration < 500,
+  });
+  sleep(1);
 }
 ```
 
-### Метрики памяти
+---
 
-Модуль автоматически добавляет метрики использования памяти Go runtime:
+## Контакты и поддержка
 
-- `k6_mem_alloc_mb` - Текущее использование памяти
-- `k6_mem_heapalloc_mb` - Использование heap
-- `k6_mem_heap_sys_mb` - Системная память heap
-- `k6_mem_heap_idle_mb` - Свободная память heap
-- `k6_mem_heap_inuse_mb` - Используемая память heap
-- `k6_mem_stack_inuse_mb` - Использование стека
-- `k6_mem_stack_sys_mb` - Системная память стека
-- `k6_mem_gc_cpu_fraction` - Доля CPU для GC
-- `k6_mem_gc_pause_ns` - Время паузы GC
-- `k6_mem_gc_count` - Количество GC
-- `k6_mem_objects` - Количество объектов
-
-## Зависимости
-
-- `go.k6.io/k6` - Фреймворк для нагрузочного тестирования
-- `github.com/castai/promwrite` - Клиент для Prometheus remote write
-- `github.com/prometheus/client_golang` - Prometheus клиент
-- `github.com/sirupsen/logrus` - Логирование
-
-## Разработка
-
-### Сборка
-
-```bash
-go build .
-```
-
-### Тестирование
-
-```bash
-go test ./...
-```
-
-## Лицензия
-
-MIT 
+Если возникли вопросы или нужны доработки — пишите! 

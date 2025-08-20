@@ -8,7 +8,6 @@ require (
 	buf.build/gen/go/prometheus/prometheus/protocolbuffers/go v1.31.0-20230627135113-9a12bc2590d2.1
 	github.com/castai/promwrite v0.6.0
 	github.com/klauspost/compress v1.18.0
-	github.com/prometheus/prometheus v0.305.0
 	github.com/sirupsen/logrus v1.9.3
 	go.k6.io/k6 v0.48.0
 )
@@ -20,6 +19,7 @@ require (
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.65.0 // indirect
+	github.com/prometheus/prometheus v0.305.0 // indirect
 )
 
 require (
@@ -55,3 +55,5 @@ require (
 	google.golang.org/protobuf v1.36.6 // или выше
 	gopkg.in/guregu/null.v3 v3.3.0
 )
+
+replace go.k6.io/k6 => go.k6.io/k6 v0.48.0
