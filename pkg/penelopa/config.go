@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	defaultServerURL    = "http://vms-victoria-metrics-single-victoria-server.metricstest:8428/api/v1/write"
+	defaultServerURL    = "http://vmagent-vmagent.vm.svc.cluster.local.:8429/api/v1/write"
 	defaultTimeout      = 5 * time.Second
 	defaultPushInterval = 5 * time.Second
 	defaultBatchSize    = 1000
